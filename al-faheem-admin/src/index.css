@@ -1,0 +1,51 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --app-bg: #f1f5f9;
+  --app-fg: #0f172a;
+  --app-card: #ffffff;
+  --app-card-fg: #0f172a;
+  --app-muted: #64748b;
+  --app-border: #e2e8f0;
+  --app-sidebar: #ffffff;
+  --app-sidebar-fg: #0f172a;
+  --app-sidebar-muted: #64748b;
+  --app-sidebar-hover: rgba(15, 23, 42, 0.06);
+  --app-accent: #ffd131;
+  --app-accent-fg: #0f172a;
+  --app-navbar: #ffffff;
+  --app-row-hover: #f8fafc;
+  --app-danger: #dc2626;
+  --app-link: #2563eb;
+  --app-success: #16a34a;
+}
+
+html.dark {
+  --app-bg: #020617;
+  --app-fg: #f1f5f9;
+  --app-card: #0f172a;
+  --app-card-fg: #f1f5f9;
+  --app-muted: #94a3b8;
+  --app-border: #1e293b;
+  --app-sidebar: #020617;
+  --app-sidebar-fg: #f1f5f9;
+  --app-sidebar-muted: #64748b;
+  --app-sidebar-hover: rgba(255, 255, 255, 0.08);
+  --app-accent: #ffd131;
+  --app-accent-fg: #0f172a;
+  --app-navbar: #0f172a;
+  --app-row-hover: #1e293b;
+  --app-danger: #f87171;
+  --app-link: #60a5fa;
+  --app-success: #4ade80;
+}
+
+@layer base {
+  body {
+    background-color: var(--app-bg);
+    color: var(--app-fg);
+    -webkit-font-smoothing: antialiased;
+  }
+}

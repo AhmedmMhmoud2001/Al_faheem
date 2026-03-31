@@ -1,0 +1,13 @@
+﻿npm : npm error code ENOTEMPTY
+At C:\Users\tiger\AppData\Local\Temp\ps-script-cd74cb2c-82b1-4ce0-8a5b-ce9233e7212b.ps1:78 char:42
++ Set-Location e:\Al_Faheem\al-faheem-api; npm install 2>&1 | Out-File  ...
++                                          ~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm error code ENOTEMPTY:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+npm error syscall rmdir
+npm error path E:\Al_Faheem\al-faheem-api\node_modules\effect\dist\esm
+npm error errno -4051
+npm error ENOTEMPTY: directory not empty, rmdir 'E:\Al_Faheem\al-faheem-api\node_modules\effect\dist\esm'
+npm error A complete log of this run can be found in: 
+C:\Users\tiger\AppData\Local\npm-cache\_logs\2026-03-29T11_26_49_075Z-debug-0.log

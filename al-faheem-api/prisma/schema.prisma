@@ -1,0 +1,442 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum SubscriptionStatus {
+  NONE
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum AttemptType {
+  EXAM_TRIAL
+  EXAM_TOPIC
+  PRACTICE
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  EXPIRED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  fullName      String
+  phone         String?
+  avatarUrl     String?
+  role          Role      @default(USER)
+  trialEndsAt   DateTime?
+  emailVerified Boolean   @default(false)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  refreshTokens RefreshToken[]
+  subscriptions Subscription[]
+  payments      Payment[]
+  attempts      Attempt[]
+  progress      UserSubjectProgress[]
+  mistakes      UserMistake[]
+  feedback      Feedback[]
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}
+
+model Subject {
+  id             Int     @id @default(autoincrement())
+  slug           String  @unique
+  nameAr         String
+  nameEn         String?
+  description    String? @db.Text /// Arabic
+  descriptionEn  String? @db.Text /// English
+  imageUrl       String?
+  sortOrder   Int        @default(0)
+  isActive    Boolean    @default(true)
+  questions   Question[]
+  progress    UserSubjectProgress[]
+}
+
+model Question {
+  id           Int      @id @default(autoincrement())
+  subjectId    Int
+  subject      Subject  @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  difficulty   Int
+  sortOrder    Int      @default(0)
+  stem         String   @db.Text
+  stemEn       String?  @db.Text
+  optionA      String   @db.Text
+  optionAEn    String?  @db.Text
+  optionB      String   @db.Text
+  optionBEn    String?  @db.Text
+  optionC      String   @db.Text
+  optionCEn    String?  @db.Text
+  optionD      String   @db.Text
+  optionDEn    String?  @db.Text
+  correctIndex Int
+  imageUrl     String?
+  explanation  String?  @db.Text
+  explanationEn String? @db.Text
+  videoUrl     String?
+  pdfUrl       String?
+  isPublished  Boolean  @default(false)
+  /** When true, question may be picked for automated exams (trial / topic). Default false. */
+  includeInExam Boolean @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  attemptAnswers AttemptAnswer[]
+  mistakes       UserMistake[]
+
+  @@index([subjectId, difficulty, isPublished])
+  @@index([subjectId, sortOrder])
+  @@index([isPublished, includeInExam, subjectId, difficulty])
+}
+
+model ExamTemplate {
+  id               Int         @id @default(autoincrement())
+  code             String      @unique
+  name             String
+  attemptType      AttemptType
+  questionCount    Int
+  totalDurationSec Int?
+  perQuestionSec   Int?
+  allowResume      Boolean     @default(true)
+  subjectId        Int?
+  difficulty       Int?
+  isActive         Boolean     @default(true)
+  attempts         Attempt[]
+}
+
+model Attempt {
+  id              String        @id @default(cuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  templateId      Int
+  template        ExamTemplate  @relation(fields: [templateId], references: [id])
+  type            AttemptType
+  status          AttemptStatus @default(IN_PROGRESS)
+  startedAt       DateTime      @default(now())
+  expiresAt       DateTime
+  submittedAt     DateTime?
+  questionIdsJson String        @db.Text
+  currentIndex    Int           @default(0)
+  correctCount    Int?
+  wrongCount      Int?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  answers AttemptAnswer[]
+
+  @@index([userId, status])
+  @@index([expiresAt])
+}
+
+model AttemptAnswer {
+  id            Int       @id @default(autoincrement())
+  attemptId     String
+  attempt       Attempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId    Int
+  question      Question  @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  selectedIndex Int?
+  isCorrect     Boolean?
+  answeredAt    DateTime?
+  serverTimeSec Int?
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+}
+
+model SubscriptionPlan {
+  id            Int            @id @default(autoincrement())
+  slug          String         @unique
+  name          String
+  priceCents    Int
+  currency      String         @default("USD")
+  interval      String
+  isActive      Boolean        @default(true)
+  sortOrder     Int            @default(0)
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id                 Int                @id @default(autoincrement())
+  userId             String
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId             Int
+  plan               SubscriptionPlan   @relation(fields: [planId], references: [id])
+  status             SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelAtPeriodEnd  Boolean            @default(false)
+  providerCustomerId String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  payments Payment[]
+
+  @@index([userId, status])
+}
+
+model Payment {
+  id                Int           @id @default(autoincrement())
+  userId            String
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscriptionId    Int?
+  subscription      Subscription? @relation(fields: [subscriptionId], references: [id])
+  planId            Int?
+  amountCents       Int
+  currency          String
+  status            PaymentStatus @default(PENDING)
+  provider          String
+  providerPaymentId String?       @unique
+  rawMetadata       Json?
+  createdAt         DateTime      @default(now())
+
+  @@index([userId])
+  @@index([status])
+}
+
+model UserSubjectProgress {
+  id              Int       @id @default(autoincrement())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId       Int
+  subject         Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  answeredTotal   Int       @default(0)
+  answeredCorrect Int       @default(0)
+  percentSnapshot Int       @default(0)
+  lastActivityAt  DateTime?
+
+  @@unique([userId, subjectId])
+}
+
+model UserMistake {
+  id          Int       @id @default(autoincrement())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questionId  Int
+  question    Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  wrongCount  Int       @default(1)
+  lastWrongAt DateTime  @default(now())
+  masteredAt  DateTime?
+
+  @@unique([userId, questionId])
+}
+
+model Feedback {
+  id        Int      @id @default(autoincrement())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  rating    Int
+  name      String?
+  email     String?
+  comment   String   @db.Text
+  createdAt DateTime @default(now())
+}
+
+model ContactMessage {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String
+  message   String   @db.Text
+  status    String   @default("NEW")
+  createdAt DateTime @default(now())
+}
+
+/// Where an FAQ item is shown: homepage (`GENERAL`) vs subscriptions/checkout (`PAYMENT`).
+enum FaqScope {
+  GENERAL
+  PAYMENT
+}
+
+/// Singleton row (id = 1): homepage FAQ intro + section heading parts (AR/EN).
+model FaqSettings {
+  id               Int      @id @default(1)
+  introAr          String   @db.Text
+  introEn          String?  @db.Text
+  titleHighlightAr String   @default("الأسئلة")
+  titleRestAr      String   @default(" الأكثر شيوعا")
+  titleHighlightEn String?  @default("Questions")
+  titleRestEn      String?  @default(" most asked")
+  updatedAt        DateTime @updatedAt
+}
+
+model FaqItem {
+  id         Int      @id @default(autoincrement())
+  scope      FaqScope @default(GENERAL)
+  questionAr String   @db.Text
+  questionEn String?  @db.Text
+  answerAr   String   @db.Text
+  answerEn   String?  @db.Text
+  sortOrder  Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([scope, sortOrder, id])
+}
+
+/// Singleton row (id = 1): public «Contact us» copy and channels edited from admin.
+model SiteContactInfo {
+  id            Int      @id @default(1)
+  introAr       String?  @db.Text
+  introEn       String?  @db.Text
+  phone         String?
+  email         String?
+  facebookUrl   String?  @db.VarChar(2048)
+  instagramUrl  String?  @db.VarChar(2048)
+  whatsappUrl   String?  @db.VarChar(2048)
+  youtubeUrl    String?  @db.VarChar(2048)
+  updatedAt     DateTime @updatedAt
+}
+
+/// Singleton (id = 1): homepage testimonials section titles (AR/EN).
+model TestimonialsSettings {
+  id          Int      @id @default(1)
+  titleAr     String   @db.Text
+  titleEn     String?  @db.Text
+  subtitleAr  String   @db.Text
+  subtitleEn  String?  @db.Text
+  updatedAt   DateTime @updatedAt
+}
+
+model Testimonial {
+  id        Int      @id @default(autoincrement())
+  nameAr    String
+  nameEn    String?  @db.VarChar(500)
+  roleAr    String   @db.VarChar(500)
+  roleEn    String?  @db.VarChar(500)
+  textAr    String   @db.Text
+  textEn    String?  @db.Text
+  imageUrl  String?  @db.VarChar(2048)
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sortOrder, id])
+}
+
+/// Singleton (id = 1): homepage #about section (badge, title, body, hero image).
+model SiteAbout {
+  id       Int      @id @default(1)
+  badgeAr  String   @db.VarChar(500)
+  badgeEn  String?  @db.VarChar(500)
+  titleAr  String   @db.Text
+  titleEn  String?  @db.Text
+  bodyAr   String   @db.Text
+  bodyEn   String?  @db.Text
+  imageUrl String?  @db.VarChar(2048)
+  updatedAt DateTime @updatedAt
+}
+
+/// Singleton (id = 1): homepage «كيف تعمل منصتنا» / #how-it-works (title, body, thumbnail, optional video link).
+model SiteHomeVideo {
+  id       Int      @id @default(1)
+  titleAr  String   @db.Text
+  titleEn  String?  @db.Text
+  bodyAr   String   @db.Text
+  bodyEn   String?  @db.Text
+  thumbUrl String?  @db.VarChar(2048)
+  videoUrl String?  @db.VarChar(2048)
+  updatedAt DateTime @updatedAt
+}
+
+/// Singleton (id = 1): homepage hero (main title, subtitle, CTA labels).
+model SiteHero {
+  id             Int      @id @default(1)
+  titleAr        String   @db.Text
+  titleEn        String?  @db.Text
+  subtitleAr     String   @db.Text
+  subtitleEn     String?  @db.Text
+  howItWorksAr   String   @db.VarChar(255)
+  howItWorksEn   String?  @db.VarChar(255)
+  startNowAr     String   @db.VarChar(255)
+  startNowEn     String?  @db.VarChar(255)
+  laptopAltAr    String?  @db.VarChar(512)
+  laptopAltEn    String?  @db.VarChar(512)
+  updatedAt      DateTime @updatedAt
+}
+
+/// Singleton (id = 1): homepage stats strip + «اختبر نفسك» card.
+model SiteHomeStats {
+  id           Int      @id @default(1)
+  stat1Value   String   @db.VarChar(64)
+  stat1LabelAr String   @db.VarChar(255)
+  stat1LabelEn String?  @db.VarChar(255)
+  stat2Value   String   @db.VarChar(64)
+  stat2LabelAr String   @db.VarChar(255)
+  stat2LabelEn String?  @db.VarChar(255)
+  stat3Value   String   @db.VarChar(64)
+  stat3LabelAr String   @db.VarChar(255)
+  stat3LabelEn String?  @db.VarChar(255)
+  titleAr      String   @db.Text
+  titleEn      String?  @db.Text
+  bodyAr       String   @db.Text
+  bodyEn       String?  @db.Text
+  ctaAr        String   @db.VarChar(255)
+  ctaEn        String?  @db.VarChar(255)
+  imageUrl     String?  @db.VarChar(2048)
+  imageAltAr   String?  @db.VarChar(512)
+  imageAltEn   String?  @db.VarChar(512)
+  updatedAt    DateTime @updatedAt
+}
+
+/// Singleton (id = 1): homepage «ما الذي يميزنا؟» grid (four items).
+model SiteWhyUs {
+  id       Int      @id @default(1)
+  titleAr  String   @db.Text
+  titleEn  String?  @db.Text
+  item1Ar  String   @db.Text
+  item1En  String?  @db.Text
+  item2Ar  String   @db.Text
+  item2En  String?  @db.Text
+  item3Ar  String   @db.Text
+  item3En  String?  @db.Text
+  item4Ar  String   @db.Text
+  item4En  String?  @db.Text
+  updatedAt DateTime @updatedAt
+}
