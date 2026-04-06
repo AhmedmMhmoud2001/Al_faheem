@@ -1,4 +1,12 @@
-import { PrismaClient, Role, AttemptType, Permission } from '@prisma/client';
+import pkg from '@prisma/client';
+const { PrismaClient, Role, AttemptType, Permission: PrismaPermission } = pkg;
+// Define Permission strings when the enum is not generated in Prisma schema
+const Permission = PrismaPermission ?? {
+  MANAGE_SUBJECTS: 'MANAGE_SUBJECTS',
+  MANAGE_QUESTIONS: 'MANAGE_QUESTIONS',
+  MANAGE_USERS: 'MANAGE_USERS',
+  MANAGE_STAFF_ROLES: 'MANAGE_STAFF_ROLES',
+};
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
