@@ -5,6 +5,11 @@ import * as ctrl from './exams.controller.js';
 import { startExamSchema, answerSchema, attemptQuerySchema } from './exams.validation.js';
 
 const r = Router();
+
+// Public trial template info (no auth)
+r.get('/trial-template', ctrl.trialTemplate);
+
+// Authenticated exam routes
 r.use(requireAuth);
 
 r.post('/start', validateBody(startExamSchema), ctrl.start);

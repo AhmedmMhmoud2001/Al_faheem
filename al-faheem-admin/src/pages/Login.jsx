@@ -20,7 +20,7 @@ export default function Login() {
     setLoading(true);
     try {
       const { data } = await api.post('/auth/login', { email, password });
-      if (data.user.role !== 'ADMIN') {
+      if (!['ADMIN', 'STAFF'].includes(data.user.role)) {
         setErr(t('errors.notAdmin'));
         return;
       }

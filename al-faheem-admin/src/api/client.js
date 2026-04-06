@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api/v1';
+const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:4001/api/v1';
 
 let accessToken = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('accessToken') : null;
 let refreshToken = typeof localStorage !== 'undefined' ? localStorage.getItem('refreshToken') : null;

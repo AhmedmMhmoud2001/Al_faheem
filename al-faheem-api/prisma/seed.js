@@ -1,4 +1,4 @@
-import { PrismaClient, Role, AttemptType } from '@prisma/client';
+import { PrismaClient, Role, AttemptType, Permission } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -23,6 +23,75 @@ async function main() {
       trialEndsAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
     },
   });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Default Staff Roles & a sample Staff user
+  // ─────────────────────────────────────────────────────────────────────────────
+  const defaultStaffRoles = [
+    {
+      name: 'Content Editor',
+      description: 'Manage subjects and questions.',
+      isActive: true,
+      permissions: [
+        Permission.MANAGE_SUBJECTS,
+        Permission.MANAGE_QUESTIONS,
+      ],
+    },
+    {
+      name: 'HR',
+      description: 'Manage users only.',
+      isActive: true,
+      permissions: [
+        Permission.MANAGE_USERS,
+      ],
+    },
+    {
+      name: 'Manager',
+      description: 'Manage users, subjects, questions, and staff roles.',
+      isActive: true,
+      permissions: [
+        Permission.MANAGE_USERS,
+        Permission.MANAGE_SUBJECTS,
+        Permission.MANAGE_QUESTIONS,
+        Permission.MANAGE_STAFF_ROLES,
+      ],
+    },
+  ];
+
+  for (const role of defaultStaffRoles) {
+    const existing = await prisma.staffRole.findUnique({ where: { name: role.name } });
+    if (!existing) {
+      await prisma.staffRole.create({
+        data: {
+          name: role.name,
+          description: role.description,
+          isActive: role.isActive,
+          permissions: {
+            create: role.permissions.map((p) => ({ permission: p })),
+          },
+        },
+      });
+    }
+  }
+
+  const managerRole = await prisma.staffRole.findUnique({ where: { name: 'Manager' } });
+  if (managerRole) {
+    const staffHash = await bcrypt.hash('Staff123456', 10);
+    await prisma.user.upsert({
+      where: { email: 'staff@al-faheem.local' },
+      update: {
+        staffRoleId: managerRole.id,
+        role: Role.STAFF,
+      },
+      create: {
+        email: 'staff@al-faheem.local',
+        passwordHash: staffHash,
+        fullName: 'موظف إداري',
+        role: Role.STAFF,
+        staffRoleId: managerRole.id,
+      },
+    });
+  }
 
   /**
    * مواد منصة الفهيم: صور بأسلوب دراسي موحّد (مكتب، إضاءة هادئة، تركيز على الرياضيات والتحضير)
@@ -95,6 +164,47 @@ async function main() {
   }
 
   const allSubjects = await prisma.subject.findMany();
+
+  // Create sample subcategories per subject if none exist
+  for (const s of allSubjects) {
+    const existing = await prisma.subCategory.count({ where: { subjectId: s.id } });
+    if (existing === 0) {
+      const subs = [
+        { slug: 'part-1', nameAr: `${s.nameAr} — فرعي 1`, nameEn: `${s.nameEn || s.slug} — Part 1`, sortOrder: 1 },
+        { slug: 'part-2', nameAr: `${s.nameAr} — فرعي 2`, nameEn: `${s.nameEn || s.slug} — Part 2`, sortOrder: 2 },
+        { slug: 'part-3', nameAr: `${s.nameAr} — فرعي 3`, nameEn: `${s.nameEn || s.slug} — Part 3`, sortOrder: 3 },
+      ];
+      for (const sc of subs) {
+        await prisma.subCategory.upsert({
+          where: { subjectId_slug: { subjectId: s.id, slug: sc.slug } },
+          update: {
+            nameAr: sc.nameAr,
+            nameEn: sc.nameEn,
+            sortOrder: sc.sortOrder,
+            isActive: true,
+          },
+          create: {
+            subjectId: s.id,
+            slug: sc.slug,
+            nameAr: sc.nameAr,
+            nameEn: sc.nameEn,
+            sortOrder: sc.sortOrder,
+            isActive: true,
+          },
+        });
+      }
+    }
+  }
+
+  // Build subjectId -> subcategoryIds map
+  const allSubcats = await prisma.subCategory.findMany({
+    select: { id: true, subjectId: true, sortOrder: true },
+    orderBy: [{ subjectId: 'asc' }, { sortOrder: 'asc' }, { id: 'asc' }],
+  });
+  const subjectIdToSubcats = allSubcats.reduce((acc, sc) => {
+    (acc[sc.subjectId] ||= []).push(sc.id);
+    return acc;
+  }, /** @type {Record<number, number[]>} */ ({}));
 
   await prisma.subscriptionPlan.upsert({
     where: { slug: 'monthly' },
@@ -523,6 +633,7 @@ async function main() {
         await prisma.question.create({
           data: {
             subjectId: sub.id,
+            subCategoryId: (subjectIdToSubcats[sub.id] || [])[ (n + d + i) % (subjectIdToSubcats[sub.id]?.length || 1) ] || null,
             difficulty: d,
             stem,
             stemEn: `Sample question #${n} — ${sub.nameEn || sub.slug} — level ${d}`,

@@ -1,15 +1,21 @@
 import { z } from 'zod';
-import { AttemptType } from '@prisma/client';
+import pkg from '@prisma/client';
+const { AttemptType } = pkg;
 
 export const paginationQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().optional(),
-  role: z.enum(['USER', 'ADMIN']).optional(),
+  role: z.enum(['USER', 'ADMIN', 'STAFF']).optional(),
   userId: z.string().optional(),
   subjectId: z.coerce.number().int().optional(),
+  subCategoryId: z.coerce.number().int().optional(),
   difficulty: z.coerce.number().int().min(1).max(4).optional(),
   isPublished: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === 'true' ? true : v === 'false' ? false : undefined)),
+  includeInExam: z
     .enum(['true', 'false'])
     .optional()
     .transform((v) => (v === 'true' ? true : v === 'false' ? false : undefined)),
@@ -29,14 +35,16 @@ export const createUserSchema = z.object({
   password: z.string().min(8),
   fullName: z.string().min(2),
   phone: z.string().optional().nullable(),
-  role: z.enum(['USER', 'ADMIN']).optional(),
+  role: z.enum(['USER', 'ADMIN', 'STAFF']).optional(),
+  staffRoleId: z.coerce.number().int().optional().nullable(),
   isActive: z.boolean().optional(),
   emailVerified: z.boolean().optional(),
   avatarUrl: z.string().optional().nullable(),
 });
 
 export const setRoleSchema = z.object({
-  role: z.enum(['USER', 'ADMIN']),
+  role: z.enum(['USER', 'ADMIN', 'STAFF']),
+  staffRoleId: z.coerce.number().int().optional().nullable(),
 });
 
 export const setTrialSchema = z.object({
@@ -77,6 +85,7 @@ export const subjectUpdateSchema = z.object({
 
 export const questionCreateSchema = z.object({
   subjectId: z.coerce.number().int(),
+  subCategoryId: z.coerce.number().int().optional().nullable(),
   difficulty: z.coerce.number().int().min(1).max(4),
   sortOrder: z.coerce.number().int().min(0).optional(),
   stem: z.string().min(1),
@@ -279,6 +288,37 @@ export const subscriptionPlanCreateSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
+// SubCategory slug: allow any non-empty string (Arabic, Latin, numbers, hyphens, underscores, spaces)
+// Uniqueness is enforced by DB unique constraint [subjectId, slug]
+const subCategorySlug = z
+  .string()
+  .min(1, { message: 'الـ slug مطلوب' })
+  .max(256)
+  .transform((s) => s.trim());
+
+export const subCategoryCreateSchema = z.object({
+  subjectId: z.coerce.number().int(),
+  slug: subCategorySlug,
+  nameAr: z.string().min(1).max(512),
+  nameEn: z.string().max(512).nullish(),
+  description: z.string().max(20000).nullish(),
+  descriptionEn: z.string().max(20000).nullish(),
+  imageUrl: subjectImageUrl,
+  sortOrder: z.coerce.number().int().default(0),
+  isActive: z.boolean().default(true),
+});
+
+export const subCategoryUpdateSchema = z.object({
+  slug: subCategorySlug.optional(),
+  nameAr: z.string().min(1).max(512).optional(),
+  nameEn: z.string().max(512).nullish(),
+  description: z.string().max(20000).nullish(),
+  descriptionEn: z.string().max(20000).nullish(),
+  imageUrl: subjectImageUrl,
+  sortOrder: z.coerce.number().int().optional(),
+  isActive: z.boolean().optional(),
+});
+
 export const subscriptionPlanUpdateSchema = z.object({
   slug: subscriptionPlanSlug.optional(),
   name: z.string().min(1).max(255).optional(),
@@ -287,4 +327,12 @@ export const subscriptionPlanUpdateSchema = z.object({
   interval: z.enum(['month', 'year', 'week', 'day']).optional(),
   sortOrder: z.coerce.number().int().optional(),
   isActive: z.boolean().optional(),
+});
+
+export const siteSettingsUpdateSchema = z.object({
+  trialDays: z.coerce.number().int().min(0).max(365),
+});
+
+export const subscriptionActionSchema = z.object({
+  action: z.enum(['cancel_now', 'cancel_at_period_end', 'reactivate']),
 });

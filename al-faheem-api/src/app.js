@@ -5,7 +5,6 @@ import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { env } from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
-
 import authRoutes from './modules/auth/auth.routes.js';
 import usersRoutes from './modules/users/users.routes.js';
 import subjectsRoutes from './modules/subjects/subjects.routes.js';
@@ -23,8 +22,10 @@ import heroRoutes from './modules/hero/hero.routes.js';
 import homeStatsRoutes from './modules/homeStats/homeStats.routes.js';
 import whyUsRoutes from './modules/whyUs/whyUs.routes.js';
 import adminRoutes from './modules/admin/admin.routes.js';
+import staffRolesRoutes from './modules/staff-roles/staff-roles.routes.js';
 
 const app = express();
+const isDev = process.env.NODE_ENV !== 'production';
 
 // Allow admin/learner apps (other origins/ports) to display <img src="http://api.../uploads/...">
 // Default helmet CORP is same-origin and triggers net::ERR_BLOCKED_BY_RESPONSE.NotSameOrigin.
@@ -41,11 +42,48 @@ app.use(
 );
 app.use(express.json({ limit: '1mb' }));
 
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60 });
-app.use('/api/v1/auth', authLimiter);
+// Public GET paths that must never require auth
+const PUBLIC_GET = [
+  /^\/api\/v1\/hero\b/,
+  /^\/api\/v1\/home-stats\b/,
+  /^\/api\/v1\/home-video\b/,
+  /^\/api\/v1\/why-us\b/,
+  /^\/api\/v1\/about\b/,
+  /^\/api\/v1\/testimonials\b/,
+  /^\/api\/v1\/faq\b/,
+  /^\/api\/v1\/contact\/info\b/,
+  /^\/api\/v1\/subjects\b/,
+  /^\/api\/v1\/exams\/trial-template\b/,
+  /^\/api\/v1\/practice\/template\b/,
+];
 
-const publicLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 200 });
-app.use('/api/v1', publicLimiter);
+app.use((req, _res, next) => {
+  if (req.method === 'GET' && PUBLIC_GET.some((re) => re.test(req.path))) {
+    if (req.headers && req.headers.authorization) delete req.headers.authorization;
+    req.user = null;
+  }
+  next();
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isDev ? 1000 : 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+if (!isDev) {
+  app.use('/api/v1/auth', authLimiter);
+}
+
+const publicLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isDev ? 5000 : 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+if (!isDev) {
+  app.use('/api/v1', publicLimiter);
+}
 
 app.use('/uploads', express.static(path.resolve(process.cwd(), env.UPLOAD_DIR)));
 
@@ -67,6 +105,7 @@ v1.use('/', heroRoutes);
 v1.use('/', homeStatsRoutes);
 v1.use('/', whyUsRoutes);
 v1.use('/admin', adminRoutes);
+v1.use('/admin/staff-roles', staffRolesRoutes);
 
 app.use('/api/v1', v1);
 

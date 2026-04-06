@@ -1,10 +1,12 @@
 import { prisma } from '../lib/prisma.js';
-import { SubscriptionStatus } from '@prisma/client';
+import pkg from '@prisma/client';
+const { SubscriptionStatus } = pkg;
 
 /**
  * User can use full question bank / exams if trial active or paid subscription ACTIVE.
  */
 export async function userHasContentAccess(userId) {
+  if (userId == null) return false;
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { trialEndsAt: true, isActive: true },
@@ -45,6 +47,8 @@ export async function getUserEntitlementSnapshot(userId) {
     trialActive,
     subscriptionStatus: activeSub ? 'ACTIVE' : trialActive ? 'TRIALING' : 'NONE',
     planSlug: activeSub?.plan?.slug ?? null,
+    currentPeriodStart: activeSub?.currentPeriodStart ?? null,
+    currentPeriodEnd: activeSub?.currentPeriodEnd ?? null,
     hasContentAccess: hasAccess,
   };
 }

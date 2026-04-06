@@ -2,10 +2,39 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../../lib/prisma.js';
 import { ensureSiteContactInfoRow, SITE_CONTACT_INFO_ID } from '../../lib/siteContactInfo.js';
 import { HttpError } from '../../middleware/errorHandler.js';
-import { Role, AttemptType } from '@prisma/client';
+import pkg from '@prisma/client';
+const { Role, AttemptType } = pkg;
 
 const BCRYPT_SALT = 10;
-const TRIAL_DAYS_NEW_USER = 7;
+const SITE_SETTINGS_ID = 1;
+
+// ─── SiteSettings helpers ──────────────────────────────────────────────────
+
+async function ensureSiteSettingsRow() {
+  let row = await prisma.siteSettings.findUnique({ where: { id: SITE_SETTINGS_ID } });
+  if (!row) {
+    row = await prisma.siteSettings.create({ data: { id: SITE_SETTINGS_ID, trialDays: 7 } });
+  }
+  return row;
+}
+
+/** Returns the configured trial period in days (default 7). */
+export async function getTrialDays() {
+  const row = await ensureSiteSettingsRow();
+  return row.trialDays;
+}
+
+export async function getSiteSettings() {
+  return ensureSiteSettingsRow();
+}
+
+export async function updateSiteSettings(data) {
+  await ensureSiteSettingsRow();
+  return prisma.siteSettings.update({
+    where: { id: SITE_SETTINGS_ID },
+    data: { trialDays: data.trialDays },
+  });
+}
 
 const userAdminSelect = {
   id: true,
@@ -14,6 +43,8 @@ const userAdminSelect = {
   phone: true,
   avatarUrl: true,
   role: true,
+  staffRoleId: true,
+  staffRole: { select: { id: true, name: true } },
   trialEndsAt: true,
   isActive: true,
   emailVerified: true,
@@ -32,7 +63,7 @@ export async function getUserById(id) {
 
 export async function listUsers({ page, limit, search, role }) {
   const skip = (page - 1) * limit;
-  const roleWhere = role === 'ADMIN' || role === 'USER' ? { role } : {};
+  const roleWhere = role === 'ADMIN' || role === 'USER' || role === 'STAFF' ? { role } : {};
   const searchWhere = search
     ? {
         OR: [
@@ -56,6 +87,8 @@ export async function listUsers({ page, limit, search, role }) {
         phone: true,
         avatarUrl: true,
         role: true,
+        staffRoleId: true,
+        staffRole: { select: { id: true, name: true } },
         trialEndsAt: true,
         isActive: true,
         emailVerified: true,
@@ -71,8 +104,23 @@ export async function createUser(data) {
   if (existing) throw new HttpError(409, 'Email already registered');
 
   const passwordHash = await bcrypt.hash(data.password, BCRYPT_SALT);
+  const trialDays = await getTrialDays();
   const trialEndsAt = new Date();
-  trialEndsAt.setDate(trialEndsAt.getDate() + TRIAL_DAYS_NEW_USER);
+  trialEndsAt.setDate(trialEndsAt.getDate() + trialDays);
+
+  // Validate staffRoleId when role is STAFF
+  let staffRoleId = null;
+  if (data.role === 'STAFF') {
+    if (data.staffRoleId) {
+      const staffRole = await prisma.staffRole.findUnique({ where: { id: data.staffRoleId } });
+      if (!staffRole) throw new HttpError(404, 'Staff role not found');
+      staffRoleId = data.staffRoleId;
+    }
+  }
+
+  let roleEnum = Role.USER;
+  if (data.role === 'ADMIN') roleEnum = Role.ADMIN;
+  if (data.role === 'STAFF') roleEnum = Role.STAFF;
 
   return prisma.user.create({
     data: {
@@ -81,7 +129,8 @@ export async function createUser(data) {
       fullName: data.fullName,
       phone: data.phone ?? null,
       avatarUrl: data.avatarUrl ?? null,
-      role: data.role === 'ADMIN' ? Role.ADMIN : Role.USER,
+      role: roleEnum,
+      staffRoleId,
       isActive: data.isActive ?? true,
       emailVerified: data.emailVerified ?? false,
       trialEndsAt,
@@ -136,12 +185,32 @@ export async function deleteUser(id, actorUserId) {
   return { ok: true };
 }
 
-export async function setUserRole(id, role) {
-  if (!['USER', 'ADMIN'].includes(role)) throw new HttpError(400, 'Invalid role');
+export async function setUserRole(id, role, staffRoleId) {
+  if (!['USER', 'ADMIN', 'STAFF'].includes(role)) throw new HttpError(400, 'Invalid role');
+
+  let roleEnum = Role.USER;
+  if (role === 'ADMIN') roleEnum = Role.ADMIN;
+  if (role === 'STAFF') roleEnum = Role.STAFF;
+
+  const updateData = { role: roleEnum };
+
+  if (role === 'STAFF') {
+    if (staffRoleId) {
+      const staffRole = await prisma.staffRole.findUnique({ where: { id: staffRoleId } });
+      if (!staffRole) throw new HttpError(404, 'Staff role not found');
+      updateData.staffRoleId = staffRoleId;
+    } else {
+      updateData.staffRoleId = null;
+    }
+  } else {
+    // Clear staffRoleId when changing away from STAFF
+    updateData.staffRoleId = null;
+  }
+
   return prisma.user.update({
     where: { id },
-    data: { role: role === 'ADMIN' ? Role.ADMIN : Role.USER },
-    select: { id: true, email: true, role: true },
+    data: updateData,
+    select: { id: true, email: true, role: true, staffRoleId: true },
   });
 }
 
@@ -204,12 +273,90 @@ export async function deleteSubject(id) {
   return { ok: true };
 }
 
-export async function listQuestionsAdmin({ subjectId, difficulty, isPublished, page, limit }) {
+// ─── SubCategory ─────────────────────────────────────────────────────────────
+
+export async function listSubcategoriesAdmin(subjectId) {
+  const where = subjectId ? { subjectId: Number(subjectId) } : {};
+  return prisma.subCategory.findMany({
+    where,
+    orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+    include: {
+      _count: { select: { questions: true } },
+    },
+  });
+}
+
+export async function createSubCategory(data) {
+  const imageUrl = data.imageUrl && data.imageUrl !== '' ? data.imageUrl : null;
+  try {
+    return await prisma.subCategory.create({
+      data: {
+        subjectId: Number(data.subjectId),
+        slug: data.slug.trim(),
+        nameAr: data.nameAr.trim(),
+        nameEn: data.nameEn || null,
+        description: data.description || null,
+        descriptionEn: data.descriptionEn || null,
+        imageUrl,
+        sortOrder: Number(data.sortOrder) || 0,
+        isActive: data.isActive !== false,
+      },
+    });
+  } catch (e) {
+    if (e.code === 'P2002') throw new HttpError(409, 'الـ slug مستخدم مسبقاً في هذه المادة');
+    if (e.code === 'P2003') throw new HttpError(404, 'المادة غير موجودة');
+    throw e;
+  }
+}
+
+export async function updateSubCategory(id, data) {
+  const next = {};
+  if (data.slug !== undefined) next.slug = data.slug.trim();
+  if (data.nameAr !== undefined) next.nameAr = data.nameAr.trim();
+  if (data.nameEn !== undefined) next.nameEn = data.nameEn || null;
+  if (data.description !== undefined) next.description = data.description || null;
+  if (data.descriptionEn !== undefined) next.descriptionEn = data.descriptionEn || null;
+  if (data.sortOrder !== undefined) next.sortOrder = Number(data.sortOrder);
+  if (data.isActive !== undefined) next.isActive = data.isActive;
+  if (data.imageUrl !== undefined) {
+    next.imageUrl = data.imageUrl && data.imageUrl !== '' ? data.imageUrl : null;
+  }
+  if (Object.keys(next).length === 0) {
+    const row = await prisma.subCategory.findUnique({ where: { id } });
+    if (!row) throw new HttpError(404, 'التصنيف الفرعي غير موجود');
+    return row;
+  }
+  try {
+    return await prisma.subCategory.update({ where: { id }, data: next });
+  } catch (e) {
+    if (e.code === 'P2025') throw new HttpError(404, 'التصنيف الفرعي غير موجود');
+    if (e.code === 'P2002') throw new HttpError(409, 'الـ slug مستخدم مسبقاً في هذه المادة');
+    throw e;
+  }
+}
+
+export async function deleteSubCategory(id) {
+  const qCount = await prisma.question.count({ where: { subCategoryId: id } });
+  if (qCount > 0) throw new HttpError(409, 'التصنيف مرتبط بأسئلة؛ انقل أو احذف الأسئلة أولاً');
+  try {
+    await prisma.subCategory.delete({ where: { id } });
+  } catch (e) {
+    if (e.code === 'P2025') throw new HttpError(404, 'التصنيف الفرعي غير موجود');
+    throw e;
+  }
+  return { ok: true };
+}
+
+// ─── Questions ───────────────────────────────────────────────────────────────
+
+export async function listQuestionsAdmin({ subjectId, subCategoryId, difficulty, isPublished, includeInExam, page, limit }) {
   const skip = (page - 1) * limit;
   const where = {
     ...(subjectId ? { subjectId } : {}),
+    ...(subCategoryId ? { subCategoryId } : {}),
     ...(difficulty != null ? { difficulty } : {}),
     ...(isPublished != null ? { isPublished } : {}),
+    ...(includeInExam != null ? { includeInExam } : {}),
   };
   const [total, data] = await Promise.all([
     prisma.question.count({ where }),
@@ -224,10 +371,20 @@ export async function listQuestionsAdmin({ subjectId, difficulty, isPublished, p
   return { data, meta: { page, limit, total } };
 }
 
+export async function getQuestionById(id) {
+  const row = await prisma.question.findUnique({
+    where: { id },
+    include: { subject: true },
+  });
+  if (!row) throw new HttpError(404, 'Question not found');
+  return row;
+}
+
 export async function createQuestion(data) {
   return prisma.question.create({
     data: {
       subjectId: data.subjectId,
+      subCategoryId: data.subCategoryId ?? null,
       difficulty: data.difficulty,
       sortOrder: data.sortOrder ?? 0,
       stem: data.stem,
@@ -376,12 +533,50 @@ export async function listPaymentsAdmin({ page, limit }) {
       skip,
       take: limit,
       orderBy: { createdAt: 'desc' },
-      include: { user: { select: { email: true, fullName: true } } },
+      include: { user: { select: { email: true, fullName: true } }, subscription: true },
     }),
   ]);
   return { data, meta: { page, limit, total } };
 }
 
+export async function updateSubscriptionByAction(id, action) {
+  const subId = Number(id);
+  if (!Number.isFinite(subId)) throw new HttpError(400, 'Invalid id');
+  const sub = await prisma.subscription.findUnique({ where: { id: subId }, include: { plan: true } });
+  if (!sub) throw new HttpError(404, 'Subscription not found');
+
+  const now = new Date();
+  if (action === 'cancel_now') {
+    return prisma.subscription.update({
+      where: { id: subId },
+      data: { status: 'CANCELED', currentPeriodEnd: now, cancelAtPeriodEnd: false },
+    });
+  }
+  if (action === 'cancel_at_period_end') {
+    return prisma.subscription.update({
+      where: { id: subId },
+      data: { cancelAtPeriodEnd: true },
+    });
+  }
+  if (action === 'reactivate') {
+    // Reactivate immediately and extend period minimally if already ended
+    let end = sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd) : new Date(now);
+    if (!sub.currentPeriodEnd || end <= now) {
+      switch (sub.plan.interval) {
+        case 'day': end.setDate(now.getDate() + 1); break;
+        case 'week': end.setDate(now.getDate() + 7); break;
+        case 'month': end.setMonth(now.getMonth() + 1); break;
+        case 'year': end.setFullYear(now.getFullYear() + 1); break;
+        default: end.setMonth(now.getMonth() + 1); break;
+      }
+    }
+    return prisma.subscription.update({
+      where: { id: subId },
+      data: { status: 'ACTIVE', currentPeriodStart: now, currentPeriodEnd: end, cancelAtPeriodEnd: false },
+    });
+  }
+  throw new HttpError(400, 'Invalid action');
+}
 export async function listSubscriptionPlansAdmin() {
   const rows = await prisma.subscriptionPlan.findMany({
     orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],

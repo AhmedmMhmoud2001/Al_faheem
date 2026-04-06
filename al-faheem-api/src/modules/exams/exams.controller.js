@@ -9,6 +9,15 @@ export async function start(req, res, next) {
   }
 }
 
+export async function trialTemplate(req, res, next) {
+  try {
+    const out = await svc.getTrialTemplatePublic();
+    res.json(out);
+  } catch (e) {
+    next(e);
+  }
+}
+
 export async function getAttempt(req, res, next) {
   try {
     const { lang } = req.validated.query;

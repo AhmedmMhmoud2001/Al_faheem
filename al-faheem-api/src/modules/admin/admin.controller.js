@@ -46,7 +46,8 @@ export async function patchUser(req, res, next) {
 
 export async function setRole(req, res, next) {
   try {
-    const out = await svc.setUserRole(req.params.id, req.validated.body.role);
+    const { role, staffRoleId } = req.validated.body;
+    const out = await svc.setUserRole(req.params.id, role, staffRoleId ?? null);
     res.json(out);
   } catch (e) {
     next(e);
@@ -107,11 +108,50 @@ export async function removeSubject(req, res, next) {
   }
 }
 
+export async function subjectSubcategories(req, res, next) {
+  try {
+    // Support both /subjects/:id/subcategories (params.id) and /subcategories?subjectId= (query)
+    const subjectId = req.params.id ?? req.query.subjectId;
+    const data = await svc.listSubcategoriesAdmin(subjectId);
+    res.json({ data });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function createSubCategory(req, res, next) {
+  try {
+    const row = await svc.createSubCategory(req.validated.body);
+    res.status(201).json(row);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function updateSubCategory(req, res, next) {
+  try {
+    const row = await svc.updateSubCategory(Number(req.params.id), req.validated.body);
+    res.json(row);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function removeSubCategory(req, res, next) {
+  try {
+    const out = await svc.deleteSubCategory(Number(req.params.id));
+    res.json(out);
+  } catch (e) {
+    next(e);
+  }
+}
+
 export async function questions(req, res, next) {
   try {
-    const { page, limit, subjectId, difficulty, isPublished, includeInExam } = req.validated.query;
+    const { page, limit, subjectId, subCategoryId, difficulty, isPublished, includeInExam } = req.validated.query;
     const out = await svc.listQuestionsAdmin({
       subjectId,
+      subCategoryId,
       difficulty,
       isPublished,
       includeInExam,
@@ -128,6 +168,15 @@ export async function createQuestion(req, res, next) {
   try {
     const row = await svc.createQuestion(req.validated.body);
     res.status(201).json(row);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function questionById(req, res, next) {
+  try {
+    const row = await svc.getQuestionById(Number(req.params.id));
+    res.json(row);
   } catch (e) {
     next(e);
   }
@@ -240,6 +289,15 @@ export async function payments(req, res, next) {
     const { page, limit } = req.validated.query;
     const out = await svc.listPaymentsAdmin({ page, limit });
     res.json(out);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function subscriptionAction(req, res, next) {
+  try {
+    const row = await svc.updateSubscriptionByAction(Number(req.params.id), req.validated.body.action);
+    res.json(row);
   } catch (e) {
     next(e);
   }
@@ -456,6 +514,24 @@ export async function dashboardAnalytics(req, res, next) {
   try {
     const out = await svc.getDashboardAnalytics();
     res.json(out);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function siteSettingsGet(req, res, next) {
+  try {
+    const row = await svc.getSiteSettings();
+    res.json(row);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function siteSettingsPatch(req, res, next) {
+  try {
+    const row = await svc.updateSiteSettings(req.validated.body);
+    res.json(row);
   } catch (e) {
     next(e);
   }

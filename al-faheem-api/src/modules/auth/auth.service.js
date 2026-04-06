@@ -3,10 +3,24 @@ import { prisma } from '../../lib/prisma.js';
 import { signAccessToken, accessExpiresInSeconds } from '../../lib/jwt.js';
 import { randomRefreshToken, hashToken, randomOtp } from '../../lib/crypto.js';
 import { HttpError } from '../../middleware/errorHandler.js';
+import { getPermissionsForRole } from '../staff-roles/staff-roles.service.js';
 
 const SALT = 10;
-const TRIAL_DAYS = 7;
 const REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_ACTIVE_SESSIONS = 2;
+const SITE_SETTINGS_ID = 1;
+
+/** Reads trialDays from DB singleton; falls back to 7 if not seeded yet. */
+async function getTrialDays() {
+  try {
+    const row = await prisma.siteSettings.findUnique({ where: { id: SITE_SETTINGS_ID } });
+    if (row) return row.trialDays;
+    const created = await prisma.siteSettings.create({ data: { id: SITE_SETTINGS_ID, trialDays: 7 } });
+    return created.trialDays;
+  } catch {
+    return 7;
+  }
+}
 
 function publicUser(u) {
   return {
@@ -26,7 +40,7 @@ export async function register(data) {
 
   const passwordHash = await bcrypt.hash(data.password, SALT);
   const trialEndsAt = new Date();
-  trialEndsAt.setDate(trialEndsAt.getDate() + TRIAL_DAYS);
+  trialEndsAt.setDate(trialEndsAt.getDate() + (await getTrialDays()));
 
   const user = await prisma.user.create({
     data: {
@@ -42,7 +56,7 @@ export async function register(data) {
   return issueTokens(user);
 }
 
-export async function login(data) {
+export async function login(data, deviceInfo = null, ipAddress = null) {
   const user = await prisma.user.findUnique({ where: { email: data.email } });
   if (!user || !user.isActive) {
     throw new HttpError(401, 'البريد الإلكتروني أو كلمة المرور غير صحيحة.');
@@ -50,25 +64,56 @@ export async function login(data) {
   const ok = await bcrypt.compare(data.password, user.passwordHash);
   if (!ok) throw new HttpError(401, 'البريد الإلكتروني أو كلمة المرور غير صحيحة.');
 
-  return issueTokens(user);
+  return issueTokens(user, deviceInfo, ipAddress);
 }
 
-async function issueTokens(user) {
-  const accessToken = signAccessToken({ sub: user.id, role: String(user.role) });
+async function issueTokens(user, deviceInfo = null, ipAddress = null) {
+  const activeTokens = await prisma.refreshToken.findMany({
+    where: {
+      userId: user.id,
+      revoked: false,
+      expiresAt: { gt: new Date() },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  if (activeTokens.length >= MAX_ACTIVE_SESSIONS) {
+    const oldestToken = activeTokens[0];
+    await prisma.refreshToken.update({
+      where: { id: oldestToken.id },
+      data: { revoked: true },
+    });
+  }
+
+  // Load permissions for STAFF users
+  const permissions =
+    String(user.role) === 'STAFF'
+      ? await getPermissionsForRole(user.staffRoleId ?? null)
+      : [];
+
   const refreshRaw = randomRefreshToken();
   const tokenHash = hashToken(refreshRaw);
   const expiresAt = new Date(Date.now() + REFRESH_MS);
 
-  await prisma.refreshToken.create({
+  const refreshTokenRecord = await prisma.refreshToken.create({
     data: {
       userId: user.id,
       tokenHash,
       expiresAt,
+      deviceInfo,
+      ipAddress,
     },
   });
 
+  const accessTokenWithSession = signAccessToken({
+    sub: user.id,
+    role: String(user.role),
+    sid: refreshTokenRecord.id,
+    permissions,
+  });
+
   return {
-    accessToken,
+    accessToken: accessTokenWithSession,
     refreshToken: refreshRaw,
     expiresIn: accessExpiresInSeconds(),
     user: publicUser(user),
@@ -91,21 +136,33 @@ export async function refresh(refreshToken) {
     data: { revoked: true },
   });
 
-  const accessToken = signAccessToken({ sub: row.user.id, role: String(row.user.role) });
+  // Load permissions for STAFF users
+  const permissions =
+    String(row.user.role) === 'STAFF'
+      ? await getPermissionsForRole(row.user.staffRoleId ?? null)
+      : [];
+
   const newRefreshRaw = randomRefreshToken();
   const newHash = hashToken(newRefreshRaw);
   const expiresAt = new Date(Date.now() + REFRESH_MS);
 
-  await prisma.refreshToken.create({
+  const newRefreshToken = await prisma.refreshToken.create({
     data: {
       userId: row.user.id,
       tokenHash: newHash,
       expiresAt,
+      deviceInfo: row.deviceInfo,
+      ipAddress: row.ipAddress,
     },
   });
 
   return {
-    accessToken,
+    accessToken: signAccessToken({
+      sub: row.user.id,
+      role: String(row.user.role),
+      sid: newRefreshToken.id,
+      permissions,
+    }),
     refreshToken: newRefreshRaw,
     expiresIn: accessExpiresInSeconds(),
     user: publicUser(row.user),

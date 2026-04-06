@@ -11,7 +11,9 @@ export async function register(req, res, next) {
 
 export async function login(req, res, next) {
   try {
-    const out = await authService.login(req.validated.body);
+    const deviceInfo = req.headers['user-agent'] || null;
+    const ipAddress = req.ip || req.headers['x-forwarded-for'] || null;
+    const out = await authService.login(req.validated.body, deviceInfo, ipAddress);
     res.json(out);
   } catch (e) {
     next(e);

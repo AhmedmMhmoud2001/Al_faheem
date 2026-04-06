@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma.js';
-import { AttemptStatus, AttemptType } from '@prisma/client';
+import pkg from '@prisma/client';
+const { AttemptStatus, AttemptType } = pkg;
 import { userHasContentAccess } from '../../services/entitlement.service.js';
 import { HttpError } from '../../middleware/errorHandler.js';
 import { questionToLearner, resolveQuestionTexts } from '../../services/questions.util.js';
@@ -32,6 +33,24 @@ function computeExpiresAt(startedAt, template, actualQuestionCount = template.qu
     return new Date(startedAt.getTime() + n * template.perQuestionSec * 1000);
   }
   return new Date(startedAt.getTime() + 45 * 60 * 1000);
+}
+
+export async function getTrialTemplatePublic() {
+  const tpl = await prisma.examTemplate.findUnique({ where: { code: 'TRIAL_24' } });
+  if (!tpl || !tpl.isActive) {
+    return {
+      isActive: false,
+      questionCount: 0,
+      totalDurationSec: null,
+      perQuestionSec: null,
+    };
+  }
+  return {
+    isActive: true,
+    questionCount: tpl.questionCount,
+    totalDurationSec: tpl.totalDurationSec,
+    perQuestionSec: tpl.perQuestionSec,
+  };
 }
 
 export async function startExam(userId, body) {

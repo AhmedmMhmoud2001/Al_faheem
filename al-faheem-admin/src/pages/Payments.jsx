@@ -25,6 +25,8 @@ export default function Payments() {
               <Th>{t('payments.amount')}</Th>
               <Th>{t('payments.status')}</Th>
               <Th>{t('payments.date')}</Th>
+              <Th>تاريخ انتهاء الاشتراك</Th>
+              <Th>{t('payments.actions')}</Th>
             </Tr>
           </THead>
           <TBody>
@@ -37,6 +39,49 @@ export default function Payments() {
                 <Td>{p.status}</Td>
                 <Td className="text-[var(--app-muted)]">
                   {new Date(p.createdAt).toLocaleString(i18n.language)}
+                </Td>
+                <Td className="text-[var(--app-muted)]">
+                  {p.subscription?.currentPeriodEnd
+                    ? new Date(p.subscription.currentPeriodEnd).toLocaleString(i18n.language)
+                    : '—'}
+                </Td>
+                <Td>
+                  <div className="flex gap-2">
+                    {p.subscriptionId ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await api.post(`/admin/subscriptions/${p.subscriptionId}/action`, { action: 'cancel_now' });
+                              alert('تم إلغاء الاشتراك فوراً.');
+                            } catch (e) {
+                              alert(e?.response?.data?.message || 'تعذر تحديث الاشتراك');
+                            }
+                          }}
+                          className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700"
+                        >
+                          إلغاء الآن
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await api.post(`/admin/subscriptions/${p.subscriptionId}/action`, { action: 'reactivate' });
+                              alert('تم تفعيل الاشتراك.');
+                            } catch (e) {
+                              alert(e?.response?.data?.message || 'تعذر تحديث الاشتراك');
+                            }
+                          }}
+                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
+                        >
+                          تفعيل
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-[var(--app-muted)] text-xs">—</span>
+                    )}
+                  </div>
                 </Td>
               </Tr>
             ))}

@@ -29,3 +29,53 @@ export async function paymentWebhook(req, res, next) {
     next(e);
   }
 }
+
+export async function mockConfirmPaid(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const { planSlug } = req.validated.body;
+    const plan = await prisma.subscriptionPlan.findUnique({ where: { slug: planSlug } });
+    if (!plan || !plan.isActive) throw new HttpError(404, 'Plan not found');
+
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { trialEndsAt: true } });
+    const now = new Date();
+    // If user still has trial in future, start subscription right after trial ends; otherwise start now.
+    const start = user?.trialEndsAt && user.trialEndsAt > now ? new Date(user.trialEndsAt) : now;
+    const end = new Date(start);
+    switch (plan.interval) {
+      case 'day': end.setDate(end.getDate() + 1); break;
+      case 'week': end.setDate(end.getDate() + 7); break;
+      case 'month': end.setMonth(end.getMonth() + 1); break;
+      case 'year': end.setFullYear(end.getFullYear() + 1); break;
+      default: end.setMonth(end.getMonth() + 1); break;
+    }
+
+    const sub = await prisma.subscription.create({
+      data: {
+        userId,
+        planId: plan.id,
+        status: 'ACTIVE',
+        currentPeriodStart: start,
+        currentPeriodEnd: end,
+        cancelAtPeriodEnd: false,
+      },
+    });
+
+    await prisma.payment.create({
+      data: {
+        userId,
+        subscriptionId: sub.id,
+        planId: plan.id,
+        amountCents: plan.priceCents,
+        currency: plan.currency,
+        status: 'SUCCEEDED',
+        provider: 'MOCK',
+        rawMetadata: { note: 'Mock payment success' },
+      },
+    });
+
+    res.status(201).json({ ok: true, subscriptionId: sub.id, currentPeriodEnd: sub.currentPeriodEnd });
+  } catch (e) {
+    next(e);
+  }
+}
