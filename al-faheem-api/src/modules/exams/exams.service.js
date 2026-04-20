@@ -154,11 +154,18 @@ export async function getAttempt(userId, attemptId, { lang = 'ar' } = {}) {
 
   const payload = questions.map((q) => {
     const ans = answerMap.get(q.id);
-    const base = questionToLearner(q, { includeCorrect: false, lang });
+    const revealCorrect = attempt.status !== AttemptStatus.IN_PROGRESS;
+    const base = questionToLearner(q, { includeCorrect: revealCorrect, lang });
+
+    // During IN_PROGRESS we keep the exam "blind" (no correctIndex unless already answered wrong by legacy behavior).
     if (ans?.selectedIndex != null) {
       base.userAnswerIndex = ans.selectedIndex;
       base.isCorrect = ans.isCorrect;
-      if (ans.isCorrect === false) base.correctIndex = q.correctIndex;
+      if (!revealCorrect && ans.isCorrect === false) base.correctIndex = q.correctIndex;
+    } else if (revealCorrect) {
+      // For submitted/expired attempts, treat unanswered questions as wrong so the UI can review them.
+      base.userAnswerIndex = null;
+      base.isCorrect = false;
     }
     return base;
   });
