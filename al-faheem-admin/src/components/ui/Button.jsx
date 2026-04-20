@@ -1,6 +1,6 @@
 const variants = {
   primary:
-    'bg-[var(--app-accent)] text-[var(--app-accent-fg)] hover:opacity-90 shadow-sm dark:shadow-none',
+    'bg-[var(--app-accent)] text-[var(--app-accent-fg)] hover:bg-[var(--app-accent-hover)] shadow-sm dark:shadow-none',
   secondary:
     'bg-[var(--app-card)] text-[var(--app-card-fg)] border border-[var(--app-border)] hover:bg-[var(--app-row-hover)]',
   ghost: 'text-[var(--app-muted)] hover:bg-[var(--app-row-hover)] hover:text-[var(--app-card-fg)]',

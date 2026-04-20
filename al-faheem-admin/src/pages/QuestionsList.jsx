@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pencil, Trash2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/client.js';
 import Button from '../components/ui/Button.jsx';
 import { Table, TableWrap, TBody, Td, Th, THead, Tr } from '../components/ui/Table.jsx';
@@ -15,6 +15,7 @@ const iconBtnDanger =
 export default function QuestionsList() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const [rows, setRows] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [subjectId, setSubjectId] = useState('');
@@ -26,10 +27,25 @@ export default function QuestionsList() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const limit = 10;
+  const didInitFromUrl = useRef(false);
 
   useEffect(() => {
     api.get('/admin/subjects').then((r) => setSubjects(r.data.data)).catch(() => {});
   }, []);
+
+  // Initialize filters from URL query (?subjectId=&subCategoryId=&difficulty=)
+  useEffect(() => {
+    if (didInitFromUrl.current) return;
+    const sp = new URLSearchParams(location.search || '');
+    const sid = sp.get('subjectId') || '';
+    const scid = sp.get('subCategoryId') || '';
+    const diff = sp.get('difficulty') || '';
+    if (sid) setSubjectId(sid);
+    if (diff) setDifficultyFilter(diff);
+    if (scid) setSubCategoryId(scid);
+    if (sid || scid || diff) setPage(1);
+    didInitFromUrl.current = true;
+  }, [location.search]);
 
   // Load subcategories when subject changes
   useEffect(() => {

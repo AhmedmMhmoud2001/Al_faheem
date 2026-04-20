@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+@import '../node_modules/mathlive/mathlive-static.css';
+@import '../node_modules/mathlive/mathlive-fonts.css';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -13,12 +15,13 @@
   --app-sidebar-fg: #0f172a;
   --app-sidebar-muted: #64748b;
   --app-sidebar-hover: rgba(15, 23, 42, 0.06);
-  --app-accent: #ffd131;
-  --app-accent-fg: #0f172a;
+  --app-accent: #0b5fae; /* logo blue */
+  --app-accent-hover: #094f90;
+  --app-accent-fg: #ffffff;
   --app-navbar: #ffffff;
   --app-row-hover: #f8fafc;
   --app-danger: #dc2626;
-  --app-link: #2563eb;
+  --app-link: #0b5fae;
   --app-success: #16a34a;
 }
 
@@ -33,12 +36,13 @@ html.dark {
   --app-sidebar-fg: #f1f5f9;
   --app-sidebar-muted: #64748b;
   --app-sidebar-hover: rgba(255, 255, 255, 0.08);
-  --app-accent: #ffd131;
-  --app-accent-fg: #0f172a;
+  --app-accent: #15b8b0; /* logo teal for dark */
+  --app-accent-hover: #0fa39c;
+  --app-accent-fg: #001317;
   --app-navbar: #0f172a;
   --app-row-hover: #1e293b;
   --app-danger: #f87171;
-  --app-link: #60a5fa;
+  --app-link: #7dd3fc;
   --app-success: #4ade80;
 }
 

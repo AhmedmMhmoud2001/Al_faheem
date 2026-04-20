@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { api, publicBase, uploadAdminFile } from '../api/client.js';
 import Button from '../components/ui/Button.jsx';
 import FormPage from '../components/ui/FormPage.jsx';
 import Input from '../components/ui/Input.jsx';
+
+import 'mathlive';
 
 const textareaClass =
   'w-full min-h-[88px] rounded-xl border border-[var(--app-border)] bg-[var(--app-card)] px-3 py-2.5 font-bold text-[var(--app-card-fg)] placeholder:text-[var(--app-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-accent)]';
@@ -25,6 +27,16 @@ function buildPayload(form) {
   return { subjectId: Number(form.subjectId), subCategoryId: form.subCategoryId ? Number(form.subCategoryId) : null, difficulty: Number(form.difficulty) || 1, sortOrder: Number(form.sortOrder) || 0, stem: form.stem.trim(), stemEn: opt(form.stemEn), optionA: form.optionA.trim(), optionAEn: opt(form.optionAEn), optionB: form.optionB.trim(), optionBEn: opt(form.optionBEn), optionC: form.optionC.trim(), optionCEn: opt(form.optionCEn), optionD: form.optionD.trim(), optionDEn: opt(form.optionDEn), correctIndex: Number(form.correctIndex), imageUrl: form.imageUrl?.trim() || null, explanation: opt(form.explanation), explanationEn: opt(form.explanationEn), videoUrl: form.videoUrl?.trim() || null, pdfUrl: form.pdfUrl?.trim() || null, isPublished: !!form.isPublished, includeInExam: !!form.includeInExam };
 }
 
+function insertAtSelection(textarea, valueToInsert) {
+  if (!textarea) return null;
+  const start = textarea.selectionStart ?? 0;
+  const end = textarea.selectionEnd ?? start;
+  const v = textarea.value ?? '';
+  const next = v.slice(0, start) + valueToInsert + v.slice(end);
+  const nextPos = start + valueToInsert.length;
+  return { next, nextPos };
+}
+
 export default function QuestionCreate() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -41,6 +53,18 @@ export default function QuestionCreate() {
   const videoRef = useRef(null);
   const pdfRef = useRef(null);
 
+  // MathLive modal
+  const [mathOpen, setMathOpen] = useState(false);
+  const [mathMode, setMathMode] = useState('block'); // inline | block
+  const [mathTarget, setMathTarget] = useState(null); // key in form, e.g. 'stem'
+  const mathFieldRef = useRef(null);
+  const textareasRef = useRef({});
+
+  const canMath = useMemo(
+    () => new Set(['stem', 'optionA', 'optionB', 'optionC', 'optionD', 'explanation', 'stemEn', 'optionAEn', 'optionBEn', 'optionCEn', 'optionDEn', 'explanationEn']),
+    [],
+  );
+
   useEffect(() => {
     api.get('/admin/subjects').then((r) => {
       const list = r.data.data || [];
@@ -54,6 +78,57 @@ export default function QuestionCreate() {
       }
     });
   }, []);
+
+  useEffect(() => {
+    if (!mathOpen) return;
+    const el = mathFieldRef.current;
+    if (!el) return;
+    try {
+      el.setOptions?.({ virtualKeyboardMode: 'onfocus', virtualKeyboards: 'all' });
+      setTimeout(() => {
+        try {
+          el.focus?.();
+          el.executeCommand?.('showVirtualKeyboard');
+        } catch {
+          /* ignore */
+        }
+      }, 0);
+    } catch {
+      /* ignore */
+    }
+  }, [mathOpen]);
+
+  function openMath(key) {
+    if (!canMath.has(key)) return;
+    setMathTarget(key);
+    setMathMode('block');
+    setMathOpen(true);
+  }
+
+  function closeMath() {
+    setMathOpen(false);
+    setTimeout(() => {
+      const ta = textareasRef.current?.[mathTarget];
+      ta?.focus?.();
+    }, 0);
+  }
+
+  function applyMath() {
+    const el = mathFieldRef.current;
+    const ta = textareasRef.current?.[mathTarget];
+    if (!el || !ta || !mathTarget) return;
+    const latex = String(el.getValue?.('latex') ?? el.value ?? '').trim();
+    if (!latex) return;
+    const wrapped = mathMode === 'inline' ? `$${latex}$` : `$$${latex}$$`;
+    const ins = insertAtSelection(ta, wrapped);
+    if (!ins) return;
+    setForm((p) => ({ ...p, [mathTarget]: ins.next }));
+    setMathOpen(false);
+    setTimeout(() => {
+      ta.focus?.();
+      ta.setSelectionRange?.(ins.nextPos, ins.nextPos);
+    }, 0);
+  }
 
   function onSubjectChange(sid) {
     setForm((p) => ({ ...p, subjectId: sid, subCategoryId: '' }));
@@ -133,26 +208,50 @@ export default function QuestionCreate() {
         {/* قسم عربي */}
         <p className="text-sm font-black text-[var(--app-accent)]">{t('questions.sectionAr')}</p>
         <div>
-          <label className="mb-1 block text-sm font-bold text-[var(--app-muted)]">{t('questions.stem')}</label>
-          <textarea className={textareaClass} rows={3} value={form.stem} onChange={(e) => setForm({ ...form, stem: e.target.value })} required />
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <label className="block text-sm font-bold text-[var(--app-muted)]">{t('questions.stem')}</label>
+            <button type="button" onClick={() => openMath('stem')} className="inline-flex items-center gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-card)] px-3 py-1.5 text-xs font-black text-[var(--app-card-fg)] hover:bg-[var(--app-row-hover)]">
+              <span className="text-base leading-none">∑</span>
+              <span>لوحة المعادلات</span>
+            </button>
+          </div>
+          <textarea ref={(el) => { if (el) textareasRef.current.stem = el; }} className={textareaClass} rows={3} value={form.stem} onChange={(e) => setForm({ ...form, stem: e.target.value })} required />
         </div>
         {['optionA', 'optionB', 'optionC', 'optionD'].map((key) => (
           <div key={key}>
-            <label className="mb-1 block text-sm font-bold text-[var(--app-muted)]">{t(`questions.${key}`)}</label>
-            <textarea className={textareaClass} rows={2} value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} required />
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <label className="block text-sm font-bold text-[var(--app-muted)]">{t(`questions.${key}`)}</label>
+              <button type="button" onClick={() => openMath(key)} className="inline-flex items-center gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-card)] px-3 py-1.5 text-xs font-black text-[var(--app-card-fg)] hover:bg-[var(--app-row-hover)]">
+                <span className="text-base leading-none">∑</span>
+                <span>لوحة المعادلات</span>
+              </button>
+            </div>
+            <textarea ref={(el) => { if (el) textareasRef.current[key] = el; }} className={textareaClass} rows={2} value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} required />
           </div>
         ))}
 
         {/* قسم إنجليزي */}
         <p className="text-sm font-black text-[var(--app-accent)]">{t('questions.sectionEn')}</p>
         <div>
-          <label className="mb-1 block text-sm font-bold text-[var(--app-muted)]">{t('questions.stemEn')}</label>
-          <textarea className={textareaClass} rows={3} value={form.stemEn} onChange={(e) => setForm({ ...form, stemEn: e.target.value })} />
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <label className="block text-sm font-bold text-[var(--app-muted)]">{t('questions.stemEn')}</label>
+            <button type="button" onClick={() => openMath('stemEn')} className="inline-flex items-center gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-card)] px-3 py-1.5 text-xs font-black text-[var(--app-card-fg)] hover:bg-[var(--app-row-hover)]">
+              <span className="text-base leading-none">∑</span>
+              <span>Math keyboard</span>
+            </button>
+          </div>
+          <textarea ref={(el) => { if (el) textareasRef.current.stemEn = el; }} className={textareaClass} rows={3} value={form.stemEn} onChange={(e) => setForm({ ...form, stemEn: e.target.value })} />
         </div>
         {[['optionA', 'optionAEn'], ['optionB', 'optionBEn'], ['optionC', 'optionCEn'], ['optionD', 'optionDEn']].map(([arKey, enKey]) => (
           <div key={enKey}>
-            <label className="mb-1 block text-sm font-bold text-[var(--app-muted)]">{t(`questions.${arKey}`)} ({t('questions.english')})</label>
-            <textarea className={textareaClass} rows={2} value={form[enKey]} onChange={(e) => setForm({ ...form, [enKey]: e.target.value })} />
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <label className="block text-sm font-bold text-[var(--app-muted)]">{t(`questions.${arKey}`)} ({t('questions.english')})</label>
+              <button type="button" onClick={() => openMath(enKey)} className="inline-flex items-center gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-card)] px-3 py-1.5 text-xs font-black text-[var(--app-card-fg)] hover:bg-[var(--app-row-hover)]">
+                <span className="text-base leading-none">∑</span>
+                <span>Math keyboard</span>
+              </button>
+            </div>
+            <textarea ref={(el) => { if (el) textareasRef.current[enKey] = el; }} className={textareaClass} rows={2} value={form[enKey]} onChange={(e) => setForm({ ...form, [enKey]: e.target.value })} />
           </div>
         ))}
 
@@ -171,12 +270,24 @@ export default function QuestionCreate() {
 
         {/* الشرح */}
         <div>
-          <label className="mb-1 block text-sm font-bold text-[var(--app-muted)]">{t('questions.explanation')}</label>
-          <textarea className={textareaClass} rows={3} value={form.explanation} onChange={(e) => setForm({ ...form, explanation: e.target.value })} />
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <label className="block text-sm font-bold text-[var(--app-muted)]">{t('questions.explanation')}</label>
+            <button type="button" onClick={() => openMath('explanation')} className="inline-flex items-center gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-card)] px-3 py-1.5 text-xs font-black text-[var(--app-card-fg)] hover:bg-[var(--app-row-hover)]">
+              <span className="text-base leading-none">∑</span>
+              <span>لوحة المعادلات</span>
+            </button>
+          </div>
+          <textarea ref={(el) => { if (el) textareasRef.current.explanation = el; }} className={textareaClass} rows={3} value={form.explanation} onChange={(e) => setForm({ ...form, explanation: e.target.value })} />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-bold text-[var(--app-muted)]">{t('questions.explanationEn')}</label>
-          <textarea className={textareaClass} rows={3} value={form.explanationEn} onChange={(e) => setForm({ ...form, explanationEn: e.target.value })} />
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <label className="block text-sm font-bold text-[var(--app-muted)]">{t('questions.explanationEn')}</label>
+            <button type="button" onClick={() => openMath('explanationEn')} className="inline-flex items-center gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-card)] px-3 py-1.5 text-xs font-black text-[var(--app-card-fg)] hover:bg-[var(--app-row-hover)]">
+              <span className="text-base leading-none">∑</span>
+              <span>Math keyboard</span>
+            </button>
+          </div>
+          <textarea ref={(el) => { if (el) textareasRef.current.explanationEn = el; }} className={textareaClass} rows={3} value={form.explanationEn} onChange={(e) => setForm({ ...form, explanationEn: e.target.value })} />
         </div>
 
         {/* فيديو وPDF */}
@@ -217,6 +328,59 @@ export default function QuestionCreate() {
           <Button type="submit" disabled={busy}>{busy ? '…' : t('questions.add')}</Button>
         </div>
       </form>
+
+      {mathOpen && (
+        <div
+          className="fixed inset-0 z-[1000] flex items-start justify-center overflow-y-auto p-4 pb-[320px] pointer-events-none"
+          dir="rtl"
+        >
+          {/* Backdrop is visual-only (don't close on click), because MathLive keyboard is rendered outside this modal. */}
+          <div className="absolute inset-0 bg-black/50 pointer-events-none" aria-hidden="true" />
+          <div className="relative mt-8 w-full max-w-2xl rounded-2xl border border-[var(--app-border)] bg-[var(--app-card)] p-4 shadow-2xl pointer-events-auto">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-base font-black text-[var(--app-card-fg)]">لوحة المعادلات</div>
+                <div className="text-xs font-bold text-[var(--app-muted)]">اكتب المعادلة ثم اضغط إدراج</div>
+              </div>
+              <Button type="button" variant="secondary" onClick={closeMath}>×</Button>
+            </div>
+
+            <div className="mb-3 flex items-center gap-2">
+              <span className="text-xs font-black text-[var(--app-muted)]">الوضع:</span>
+              <button type="button" onClick={() => setMathMode('inline')} className={`rounded-lg border px-3 py-1.5 text-xs font-black ${mathMode === 'inline' ? 'border-[var(--app-accent)] bg-[var(--app-accent)] text-[var(--app-accent-fg)]' : 'border-[var(--app-border)] bg-[var(--app-card)] text-[var(--app-card-fg)] hover:bg-[var(--app-row-hover)]'}`}>
+                Inline ($...$)
+              </button>
+              <button type="button" onClick={() => setMathMode('block')} className={`rounded-lg border px-3 py-1.5 text-xs font-black ${mathMode === 'block' ? 'border-[var(--app-accent)] bg-[var(--app-accent)] text-[var(--app-accent-fg)]' : 'border-[var(--app-border)] bg-[var(--app-card)] text-[var(--app-card-fg)] hover:bg-[var(--app-row-hover)]'}`}>
+                Block ($$...$$)
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-row-hover)] p-3">
+              <math-field
+                ref={mathFieldRef}
+                class="w-full"
+                style={{
+                  width: '100%',
+                  minHeight: '56px',
+                  padding: '10px 12px',
+                  borderRadius: '12px',
+                  border: '1px solid var(--app-border)',
+                  background: 'var(--app-card)',
+                  color: 'var(--app-card-fg)',
+                  fontSize: '22px',
+                }}
+              >
+                x=
+              </math-field>
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={closeMath}>إلغاء</Button>
+              <Button type="button" onClick={applyMath}>إدراج</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </FormPage>
   );
 }

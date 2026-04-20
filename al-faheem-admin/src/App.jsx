@@ -20,6 +20,8 @@ import SubcategoryEdit from './pages/SubcategoryEdit.jsx';
 import QuestionsList from './pages/QuestionsList.jsx';
 import QuestionCreate from './pages/QuestionCreate.jsx';
 import QuestionEdit from './pages/QuestionEdit.jsx';
+import QuestionsPickCategory from './pages/QuestionsPickCategory.jsx';
+import QuestionsPickDifficulty from './pages/QuestionsPickDifficulty.jsx';
 import ExamTemplates from './pages/ExamTemplates.jsx';
 import ExamTemplateCreate from './pages/ExamTemplateCreate.jsx';
 import ExamTemplateEdit from './pages/ExamTemplateEdit.jsx';
@@ -88,7 +90,9 @@ export default function App() {
         <Route path="subcategories/:id/edit" element={<SubcategoryEdit />} />
 
         {/* Questions — accessible by STAFF with MANAGE_QUESTIONS permission */}
-        <Route path="questions" element={<QuestionsList />} />
+        <Route path="questions" element={<QuestionsPickCategory />} />
+        <Route path="questions/difficulty" element={<QuestionsPickDifficulty />} />
+        <Route path="questions/list" element={<QuestionsList />} />
         <Route path="questions/create" element={<QuestionCreate />} />
         <Route path="questions/:id/edit" element={<QuestionEdit />} />
 
