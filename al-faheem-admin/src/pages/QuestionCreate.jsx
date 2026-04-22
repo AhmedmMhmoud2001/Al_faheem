@@ -6,7 +6,7 @@ import Button from '../components/ui/Button.jsx';
 import FormPage from '../components/ui/FormPage.jsx';
 import Input from '../components/ui/Input.jsx';
 
-import 'mathlive';
+import { convertLatexToMarkup } from 'mathlive';
 
 const textareaClass =
   'w-full min-h-[88px] rounded-xl border border-[var(--app-border)] bg-[var(--app-card)] px-3 py-2.5 font-bold text-[var(--app-card-fg)] placeholder:text-[var(--app-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-accent)]';
@@ -14,10 +14,69 @@ const textareaClass =
 const selectClass =
   'w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-card)] px-3 py-2.5 font-bold text-[var(--app-card-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-accent)]';
 
+const previewClass =
+  'mt-2 w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-row-hover)] px-3 py-2 font-bold text-[var(--app-card-fg)]';
+
 function mediaSrc(url) {
   if (!url) return null;
   if (url.startsWith('http')) return url;
   return `${publicBase}${url.startsWith('/') ? url : `/${url}`}`;
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function renderMixedMathToHtml(input) {
+  const text = String(input ?? '');
+  if (!text.trim()) return '';
+
+  const convert = (latex, displayMode) => {
+    try {
+      return convertLatexToMarkup(String(latex ?? ''), { displayMode });
+    } catch {
+      return escapeHtml(latex);
+    }
+  };
+
+  const parts = [];
+  const re = /(\$\$[\s\S]+?\$\$|\$[^$]+\$)/g;
+  let last = 0;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const start = m.index;
+    const token = m[0];
+    if (start > last) {
+      const raw = text.slice(last, start);
+      parts.push(escapeHtml(raw).replaceAll('\n', '<br/>'));
+    }
+    if (token.startsWith('$$')) {
+      const latex = token.slice(2, -2).trim();
+      parts.push(`<div class="math-display">${convert(latex, true)}</div>`);
+    } else {
+      const latex = token.slice(1, -1).trim();
+      parts.push(`<span class="math-inline">${convert(latex, false)}</span>`);
+    }
+    last = start + token.length;
+  }
+  if (last < text.length) {
+    const raw = text.slice(last);
+    parts.push(escapeHtml(raw).replaceAll('\n', '<br/>'));
+  }
+  return parts.join('');
+}
+
+function MathPreview({ value, dir }) {
+  const v = String(value ?? '');
+  if (!v.includes('$')) return null;
+  const html = renderMixedMathToHtml(v);
+  if (!html) return null;
+  return <div className={previewClass} dir={dir} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 const emptyForm = { subjectId: '', subCategoryId: '', difficulty: 1, sortOrder: 0, stem: '', stemEn: '', optionA: '', optionAEn: '', optionB: '', optionBEn: '', optionC: '', optionCEn: '', optionD: '', optionDEn: '', correctIndex: 0, imageUrl: '', explanation: '', explanationEn: '', videoUrl: '', pdfUrl: '', isPublished: false, includeInExam: false };
@@ -216,6 +275,7 @@ export default function QuestionCreate() {
             </button>
           </div>
           <textarea ref={(el) => { if (el) textareasRef.current.stem = el; }} className={textareaClass} rows={3} value={form.stem} onChange={(e) => setForm({ ...form, stem: e.target.value })} required />
+          <MathPreview value={form.stem} dir="rtl" />
         </div>
         {['optionA', 'optionB', 'optionC', 'optionD'].map((key) => (
           <div key={key}>
@@ -227,6 +287,7 @@ export default function QuestionCreate() {
               </button>
             </div>
             <textarea ref={(el) => { if (el) textareasRef.current[key] = el; }} className={textareaClass} rows={2} value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} required />
+            <MathPreview value={form[key]} dir="rtl" />
           </div>
         ))}
 
@@ -241,6 +302,7 @@ export default function QuestionCreate() {
             </button>
           </div>
           <textarea ref={(el) => { if (el) textareasRef.current.stemEn = el; }} className={textareaClass} rows={3} value={form.stemEn} onChange={(e) => setForm({ ...form, stemEn: e.target.value })} />
+          <MathPreview value={form.stemEn} dir="ltr" />
         </div>
         {[['optionA', 'optionAEn'], ['optionB', 'optionBEn'], ['optionC', 'optionCEn'], ['optionD', 'optionDEn']].map(([arKey, enKey]) => (
           <div key={enKey}>
@@ -252,6 +314,7 @@ export default function QuestionCreate() {
               </button>
             </div>
             <textarea ref={(el) => { if (el) textareasRef.current[enKey] = el; }} className={textareaClass} rows={2} value={form[enKey]} onChange={(e) => setForm({ ...form, [enKey]: e.target.value })} />
+            <MathPreview value={form[enKey]} dir="ltr" />
           </div>
         ))}
 
@@ -278,6 +341,7 @@ export default function QuestionCreate() {
             </button>
           </div>
           <textarea ref={(el) => { if (el) textareasRef.current.explanation = el; }} className={textareaClass} rows={3} value={form.explanation} onChange={(e) => setForm({ ...form, explanation: e.target.value })} />
+          <MathPreview value={form.explanation} dir="rtl" />
         </div>
         <div>
           <div className="mb-1 flex items-center justify-between gap-2">
@@ -288,6 +352,7 @@ export default function QuestionCreate() {
             </button>
           </div>
           <textarea ref={(el) => { if (el) textareasRef.current.explanationEn = el; }} className={textareaClass} rows={3} value={form.explanationEn} onChange={(e) => setForm({ ...form, explanationEn: e.target.value })} />
+          <MathPreview value={form.explanationEn} dir="ltr" />
         </div>
 
         {/* فيديو وPDF */}
