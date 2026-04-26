@@ -79,11 +79,11 @@ function MathPreview({ value, dir }) {
   return <div className={previewClass} dir={dir} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-const emptyForm = { subjectId: '', subCategoryId: '', difficulty: 1, sortOrder: 0, stem: '', stemEn: '', optionA: '', optionAEn: '', optionB: '', optionBEn: '', optionC: '', optionCEn: '', optionD: '', optionDEn: '', correctIndex: 0, imageUrl: '', explanation: '', explanationEn: '', videoUrl: '', pdfUrl: '', isPublished: false, includeInExam: false };
+const emptyForm = { subjectId: '', subCategoryId: '', difficulty: 1, sortOrder: 0, stem: '', stemEn: '', optionA: '', optionAEn: '', optionAImageUrl: '', optionAImageUrlEn: '', optionB: '', optionBEn: '', optionBImageUrl: '', optionBImageUrlEn: '', optionC: '', optionCEn: '', optionCImageUrl: '', optionCImageUrlEn: '', optionD: '', optionDEn: '', optionDImageUrl: '', optionDImageUrlEn: '', correctIndex: 0, imageUrl: '', explanation: '', explanationEn: '', videoUrl: '', pdfUrl: '', isPublished: false, includeInExam: false };
 
 function buildPayload(form) {
   const opt = (s) => (s?.trim() ? s.trim() : null);
-  return { subjectId: Number(form.subjectId), subCategoryId: form.subCategoryId ? Number(form.subCategoryId) : null, difficulty: Number(form.difficulty) || 1, sortOrder: Number(form.sortOrder) || 0, stem: form.stem.trim(), stemEn: opt(form.stemEn), optionA: form.optionA.trim(), optionAEn: opt(form.optionAEn), optionB: form.optionB.trim(), optionBEn: opt(form.optionBEn), optionC: form.optionC.trim(), optionCEn: opt(form.optionCEn), optionD: form.optionD.trim(), optionDEn: opt(form.optionDEn), correctIndex: Number(form.correctIndex), imageUrl: form.imageUrl?.trim() || null, explanation: opt(form.explanation), explanationEn: opt(form.explanationEn), videoUrl: form.videoUrl?.trim() || null, pdfUrl: form.pdfUrl?.trim() || null, isPublished: !!form.isPublished, includeInExam: !!form.includeInExam };
+  return { subjectId: Number(form.subjectId), subCategoryId: form.subCategoryId ? Number(form.subCategoryId) : null, difficulty: Number(form.difficulty) || 1, sortOrder: Number(form.sortOrder) || 0, stem: form.stem.trim(), stemEn: opt(form.stemEn), optionA: form.optionA.trim(), optionAEn: opt(form.optionAEn), optionAImageUrl: opt(form.optionAImageUrl), optionAImageUrlEn: opt(form.optionAImageUrlEn), optionB: form.optionB.trim(), optionBEn: opt(form.optionBEn), optionBImageUrl: opt(form.optionBImageUrl), optionBImageUrlEn: opt(form.optionBImageUrlEn), optionC: form.optionC.trim(), optionCEn: opt(form.optionCEn), optionCImageUrl: opt(form.optionCImageUrl), optionCImageUrlEn: opt(form.optionCImageUrlEn), optionD: form.optionD.trim(), optionDEn: opt(form.optionDEn), optionDImageUrl: opt(form.optionDImageUrl), optionDImageUrlEn: opt(form.optionDImageUrlEn), correctIndex: Number(form.correctIndex), imageUrl: form.imageUrl?.trim() || null, explanation: opt(form.explanation), explanationEn: opt(form.explanationEn), videoUrl: form.videoUrl?.trim() || null, pdfUrl: form.pdfUrl?.trim() || null, isPublished: !!form.isPublished, includeInExam: !!form.includeInExam };
 }
 
 function insertAtSelection(textarea, valueToInsert) {
@@ -108,9 +108,11 @@ export default function QuestionCreate() {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [optionImageBusy, setOptionImageBusy] = useState({});
   const imageRef = useRef(null);
   const videoRef = useRef(null);
   const pdfRef = useRef(null);
+  const optionImageRefs = useRef({});
 
   // MathLive modal
   const [mathOpen, setMathOpen] = useState(false);
@@ -197,16 +199,28 @@ export default function QuestionCreate() {
     }).catch(() => setSubcats([]));
   }
 
-  async function handleUpload(file, kind) {
-    const setBusy = kind === 'image' ? setImageBusy : kind === 'video' ? setVideoBusy : setPdfBusy;
-    setBusy(true);
+  async function handleUpload(file, kind, optionImageField) {
+    if (kind === 'optionImage' && optionImageField) {
+      setOptionImageBusy((prev) => ({ ...prev, [optionImageField]: true }));
+    } else {
+      const setBusy = kind === 'image' ? setImageBusy : kind === 'video' ? setVideoBusy : setPdfBusy;
+      setBusy(true);
+    }
     try {
       const url = await uploadAdminFile(file);
       if (kind === 'image') setForm((p) => ({ ...p, imageUrl: url }));
       else if (kind === 'video') setForm((p) => ({ ...p, videoUrl: url }));
-      else setForm((p) => ({ ...p, pdfUrl: url }));
+      else if (kind === 'pdf') setForm((p) => ({ ...p, pdfUrl: url }));
+      else if (kind === 'optionImage' && optionImageField) setForm((p) => ({ ...p, [optionImageField]: url }));
     } catch { window.alert(t('questions.uploadFailed')); }
-    finally { setBusy(false); }
+    finally {
+      if (kind === 'optionImage' && optionImageField) {
+        setOptionImageBusy((prev) => ({ ...prev, [optionImageField]: false }));
+      } else {
+        const setBusy = kind === 'image' ? setImageBusy : kind === 'video' ? setVideoBusy : setPdfBusy;
+        setBusy(false);
+      }
+    }
   }
 
   async function submit(e) {
@@ -277,7 +291,11 @@ export default function QuestionCreate() {
           <textarea ref={(el) => { if (el) textareasRef.current.stem = el; }} className={textareaClass} rows={3} value={form.stem} onChange={(e) => setForm({ ...form, stem: e.target.value })} required />
           <MathPreview value={form.stem} dir="rtl" />
         </div>
-        {['optionA', 'optionB', 'optionC', 'optionD'].map((key) => (
+        {['optionA', 'optionB', 'optionC', 'optionD'].map((key) => {
+          const imageField = `${key}ImageUrl`;
+          const optionSrc = mediaSrc(form[imageField]);
+          const optBusy = !!optionImageBusy[imageField];
+          return (
           <div key={key}>
             <div className="mb-1 flex items-center justify-between gap-2">
               <label className="block text-sm font-bold text-[var(--app-muted)]">{t(`questions.${key}`)}</label>
@@ -288,8 +306,19 @@ export default function QuestionCreate() {
             </div>
             <textarea ref={(el) => { if (el) textareasRef.current[key] = el; }} className={textareaClass} rows={2} value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} required />
             <MathPreview value={form[key]} dir="rtl" />
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="h-16 w-24 overflow-hidden rounded-lg bg-[var(--app-row-hover)] ring-1 ring-[var(--app-border)]">
+                {optionSrc ? <img src={optionSrc} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-xs font-bold text-[var(--app-muted)]">—</div>}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <input ref={(el) => { if (el) optionImageRefs.current[imageField] = el; }} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) handleUpload(f, 'optionImage', imageField); }} />
+                <Button type="button" variant="secondary" disabled={optBusy} onClick={() => optionImageRefs.current?.[imageField]?.click()}>{t('subjects.chooseImage')}</Button>
+                {form[imageField] && <Button type="button" variant="secondary" disabled={optBusy} onClick={() => { setForm((p) => ({ ...p, [imageField]: '' })); if (optionImageRefs.current?.[imageField]) optionImageRefs.current[imageField].value = ''; }}>{t('subjects.removeImage')}</Button>}
+              </div>
+            </div>
           </div>
-        ))}
+          );
+        })}
 
         {/* قسم إنجليزي */}
         <p className="text-sm font-black text-[var(--app-accent)]">{t('questions.sectionEn')}</p>
@@ -304,7 +333,11 @@ export default function QuestionCreate() {
           <textarea ref={(el) => { if (el) textareasRef.current.stemEn = el; }} className={textareaClass} rows={3} value={form.stemEn} onChange={(e) => setForm({ ...form, stemEn: e.target.value })} />
           <MathPreview value={form.stemEn} dir="ltr" />
         </div>
-        {[['optionA', 'optionAEn'], ['optionB', 'optionBEn'], ['optionC', 'optionCEn'], ['optionD', 'optionDEn']].map(([arKey, enKey]) => (
+        {[['optionA', 'optionAEn'], ['optionB', 'optionBEn'], ['optionC', 'optionCEn'], ['optionD', 'optionDEn']].map(([arKey, enKey]) => {
+          const imageField = `${arKey}ImageUrlEn`;
+          const optionSrc = mediaSrc(form[imageField]);
+          const optBusy = !!optionImageBusy[imageField];
+          return (
           <div key={enKey}>
             <div className="mb-1 flex items-center justify-between gap-2">
               <label className="block text-sm font-bold text-[var(--app-muted)]">{t(`questions.${arKey}`)} ({t('questions.english')})</label>
@@ -315,8 +348,19 @@ export default function QuestionCreate() {
             </div>
             <textarea ref={(el) => { if (el) textareasRef.current[enKey] = el; }} className={textareaClass} rows={2} value={form[enKey]} onChange={(e) => setForm({ ...form, [enKey]: e.target.value })} />
             <MathPreview value={form[enKey]} dir="ltr" />
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="h-16 w-24 overflow-hidden rounded-lg bg-[var(--app-row-hover)] ring-1 ring-[var(--app-border)]">
+                {optionSrc ? <img src={optionSrc} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-xs font-bold text-[var(--app-muted)]">—</div>}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <input ref={(el) => { if (el) optionImageRefs.current[imageField] = el; }} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) handleUpload(f, 'optionImage', imageField); }} />
+                <Button type="button" variant="secondary" disabled={optBusy} onClick={() => optionImageRefs.current?.[imageField]?.click()}>{t('subjects.chooseImage')}</Button>
+                {form[imageField] && <Button type="button" variant="secondary" disabled={optBusy} onClick={() => { setForm((p) => ({ ...p, [imageField]: '' })); if (optionImageRefs.current?.[imageField]) optionImageRefs.current[imageField].value = ''; }}>{t('subjects.removeImage')}</Button>}
+              </div>
+            </div>
           </div>
-        ))}
+          );
+        })}
 
         {/* الإجابة الصحيحة */}
         <div>
