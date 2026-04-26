@@ -167,12 +167,20 @@ model Question {
   stemEn       String?  @db.Text
   optionA      String   @db.Text
   optionAEn    String?  @db.Text
+  optionAImageUrl String?
+  optionAImageUrlEn String?
   optionB      String   @db.Text
   optionBEn    String?  @db.Text
+  optionBImageUrl String?
+  optionBImageUrlEn String?
   optionC      String   @db.Text
   optionCEn    String?  @db.Text
+  optionCImageUrl String?
+  optionCImageUrlEn String?
   optionD      String   @db.Text
   optionDEn    String?  @db.Text
+  optionDImageUrl String?
+  optionDImageUrlEn String?
   correctIndex Int
   imageUrl     String?
   explanation  String?  @db.Text

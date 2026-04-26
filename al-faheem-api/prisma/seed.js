@@ -18,6 +18,22 @@ const optionBlock = (prefix) => ({
   optionD: `${prefix} — خيار د`,
 });
 
+const optionImageBlock = (seed) => {
+  const base = Number(seed) || 1;
+  const mk = (n) => `https://picsum.photos/seed/alfaheem-opt-${n}/480/320`;
+  const mkEn = (n) => `https://picsum.photos/seed/alfaheem-opt-en-${n}/480/320`;
+  return {
+    optionAImageUrl: mk(base * 10 + 1),
+    optionBImageUrl: mk(base * 10 + 2),
+    optionCImageUrl: mk(base * 10 + 3),
+    optionDImageUrl: mk(base * 10 + 4),
+    optionAImageUrlEn: mkEn(base * 10 + 1),
+    optionBImageUrlEn: mkEn(base * 10 + 2),
+    optionCImageUrlEn: mkEn(base * 10 + 3),
+    optionDImageUrlEn: mkEn(base * 10 + 4),
+  };
+};
+
 async function main() {
   const adminHash = await bcrypt.hash('Admin123456', 10);
   await prisma.user.upsert({
@@ -628,6 +644,37 @@ async function main() {
 
   const qCount = await prisma.question.count();
   if (qCount > 0) {
+    // Backfill option images for existing questions without removing user data.
+    const existingQs = await prisma.question.findMany({
+      select: {
+        id: true,
+        optionAImageUrl: true,
+        optionAImageUrlEn: true,
+        optionBImageUrl: true,
+        optionBImageUrlEn: true,
+        optionCImageUrl: true,
+        optionCImageUrlEn: true,
+        optionDImageUrl: true,
+        optionDImageUrlEn: true,
+      },
+      orderBy: { id: 'asc' },
+    });
+    for (const q of existingQs) {
+      const img = optionImageBlock(q.id);
+      await prisma.question.update({
+        where: { id: q.id },
+        data: {
+          optionAImageUrl: q.optionAImageUrl ?? img.optionAImageUrl,
+          optionAImageUrlEn: q.optionAImageUrlEn ?? img.optionAImageUrlEn,
+          optionBImageUrl: q.optionBImageUrl ?? img.optionBImageUrl,
+          optionBImageUrlEn: q.optionBImageUrlEn ?? img.optionBImageUrlEn,
+          optionCImageUrl: q.optionCImageUrl ?? img.optionCImageUrl,
+          optionCImageUrlEn: q.optionCImageUrlEn ?? img.optionCImageUrlEn,
+          optionDImageUrl: q.optionDImageUrl ?? img.optionDImageUrl,
+          optionDImageUrlEn: q.optionDImageUrlEn ?? img.optionDImageUrlEn,
+        },
+      });
+    }
     console.log('Seed OK (questions already present). Admin: admin@al-faheem.local / Admin123456');
     return;
   }
@@ -646,6 +693,7 @@ async function main() {
             stem,
             stemEn: `Sample question #${n} — ${sub.nameEn || sub.slug} — level ${d}`,
             ...optionBlock(`Q${n}`),
+            ...optionImageBlock(n),
             optionAEn: `Choice A for Q${n}`,
             optionBEn: `Choice B for Q${n}`,
             optionCEn: `Choice C for Q${n}`,

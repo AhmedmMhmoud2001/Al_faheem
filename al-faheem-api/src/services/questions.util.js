@@ -5,14 +5,28 @@ export function resolveQuestionTexts(q, lang = 'ar') {
   const useEn = lang === 'en';
   const stem = useEn && q.stemEn?.trim() ? q.stemEn.trim() : q.stem;
   const pick = (en, ar) => (useEn && en?.trim() ? en.trim() : ar);
+  const pickImage = (en, ar) => (useEn ? (en ?? ar ?? null) : (ar ?? null));
+  const options = [
+    {
+      text: pick(q.optionAEn, q.optionA),
+      imageUrl: pickImage(q.optionAImageUrlEn, q.optionAImageUrl),
+    },
+    {
+      text: pick(q.optionBEn, q.optionB),
+      imageUrl: pickImage(q.optionBImageUrlEn, q.optionBImageUrl),
+    },
+    {
+      text: pick(q.optionCEn, q.optionC),
+      imageUrl: pickImage(q.optionCImageUrlEn, q.optionCImageUrl),
+    },
+    {
+      text: pick(q.optionDEn, q.optionD),
+      imageUrl: pickImage(q.optionDImageUrlEn, q.optionDImageUrl),
+    },
+  ];
   return {
     stem,
-    options: [
-      pick(q.optionAEn, q.optionA),
-      pick(q.optionBEn, q.optionB),
-      pick(q.optionCEn, q.optionC),
-      pick(q.optionDEn, q.optionD),
-    ],
+    options,
     explanation: useEn && q.explanationEn?.trim() ? q.explanationEn.trim() : q.explanation ?? null,
   };
 }

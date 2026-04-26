@@ -391,12 +391,20 @@ export async function createQuestion(data) {
       stemEn: data.stemEn,
       optionA: data.optionA,
       optionAEn: data.optionAEn,
+      optionAImageUrl: data.optionAImageUrl ?? null,
+      optionAImageUrlEn: data.optionAImageUrlEn ?? null,
       optionB: data.optionB,
       optionBEn: data.optionBEn,
+      optionBImageUrl: data.optionBImageUrl ?? null,
+      optionBImageUrlEn: data.optionBImageUrlEn ?? null,
       optionC: data.optionC,
       optionCEn: data.optionCEn,
+      optionCImageUrl: data.optionCImageUrl ?? null,
+      optionCImageUrlEn: data.optionCImageUrlEn ?? null,
       optionD: data.optionD,
       optionDEn: data.optionDEn,
+      optionDImageUrl: data.optionDImageUrl ?? null,
+      optionDImageUrlEn: data.optionDImageUrlEn ?? null,
       correctIndex: data.correctIndex,
       imageUrl: data.imageUrl,
       explanation: data.explanation,
@@ -410,7 +418,22 @@ export async function createQuestion(data) {
 }
 
 export async function updateQuestion(id, data) {
-  return prisma.question.update({ where: { id }, data });
+  const imageKeys = [
+    'optionAImageUrl',
+    'optionAImageUrlEn',
+    'optionBImageUrl',
+    'optionBImageUrlEn',
+    'optionCImageUrl',
+    'optionCImageUrlEn',
+    'optionDImageUrl',
+    'optionDImageUrlEn',
+    'imageUrl',
+  ];
+  const next = { ...data };
+  for (const k of imageKeys) {
+    if (next[k] === '') next[k] = null;
+  }
+  return prisma.question.update({ where: { id }, data: next });
 }
 
 export async function deleteQuestion(id) {
